@@ -1,0 +1,33 @@
+# Virtual environment — never commit this
+.venv/
+venv/
+env/
+
+# Environment variables — NEVER commit this
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Temp audio files downloaded from Telegram
+*.ogg
+*.mp3
+*.mp4
+*.wav
+*.flac
+*.webm
+*.m4a
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
