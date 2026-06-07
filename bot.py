@@ -7,6 +7,7 @@ load_dotenv()
 
 # from pathlib import Pat
 
+from pathlib import Path
 from google import genai
 from google.genai import types
 from telegram import Update
