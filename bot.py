@@ -1,7 +1,11 @@
 import os
 import tempfile
 import logging
-from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv() 
+
+
+from pathlib import Pat
 
 from google import genai
 from google.genai import types
