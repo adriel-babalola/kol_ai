@@ -1,7 +1,9 @@
 import os
 import tempfile
 import logging
+import threading
 from pathlib import Path
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from dotenv import load_dotenv
 from google import genai
@@ -113,7 +115,7 @@ def split_message(text: str, limit: int = 4000):
     while len(text) > limit:
         split_at = text.rfind("\n", 0, limit)
 
-        if split_at == -1:
+        if split_at <= 0:
             split_at = limit
 
         chunks.append(text[:split_at])
@@ -159,13 +161,22 @@ async def process_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_obj = msg.audio
         file_ext = Path(
             msg.audio.file_name or "audio.mp3"
-        ).suffix.lower()
+        ).suffix.lower() or ".mp3"
 
     elif msg.video_note:
         file_obj = msg.video_note
         file_ext = ".mp4"
 
     else:
+        return
+
+    # Telegram Bot API limit is 20MB for downloading files
+    file_size_limit = 20 * 1024 * 1024
+    file_size = getattr(file_obj, "file_size", None)
+    if file_size and file_size > file_size_limit:
+        await msg.reply_text(
+            "⚠️ This file is too large. Telegram bots can only download files up to 20MB."
+        )
         return
 
     mime_type = MIME_MAP.get(file_ext, "audio/ogg")
@@ -222,6 +233,7 @@ async def process_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         await status_message.delete()
+        status_message = None
 
         chunks = split_message(result)
 
@@ -245,14 +257,18 @@ async def process_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         error_message = str(e)
 
-        try:
-            await status_message.edit_text(
-                f"❌ Error:\n{error_message}"
-            )
-        except Exception:
-            await msg.reply_text(
-                f"❌ Error:\n{error_message}"
-            )
+        if status_message:
+            try:
+                await status_message.edit_text(
+                    f"❌ Error:\n{error_message}"
+                )
+                return
+            except Exception:
+                pass
+
+        await msg.reply_text(
+            f"❌ Error:\n{error_message}"
+        )
 
     finally:
 
@@ -272,6 +288,32 @@ async def unsupported(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ─────────────────────────────────────────────────────────────
+# Error Handling & Healthcheck
+# ─────────────────────────────────────────────────────────────
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error inflicted by an Update."""
+    log.error("Exception while handling an update:", exc_info=context.error)
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        # Suppress logging to keep stdout clean
+        pass
+
+def start_health_check_server():
+    port = int(os.getenv("PORT", "8080"))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    log.info(f"Starting health check server on port {port}...")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+# ─────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────
 
@@ -282,6 +324,12 @@ def main():
         .token(TELEGRAM_TOKEN)
         .build()
     )
+
+    # Register global error handler
+    app.add_error_handler(error_handler)
+
+    # Start background healthcheck HTTP server
+    start_health_check_server()
 
     app.add_handler(
         CommandHandler("start", start)
