@@ -157,6 +157,8 @@ MIME_MAP = {
     ".wav": "audio/wav",
     ".flac": "audio/flac",
     ".webm": "audio/webm",
+    ".aac": "audio/aac",
+    ".acc": "audio/aac",
 }
 
 # ─────────────────────────────────────────────────────────────
